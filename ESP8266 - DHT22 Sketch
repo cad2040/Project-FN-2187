@@ -1,0 +1,82 @@
+#include <ESP8266WiFi.h>
+#include <MySQL_Connection.h>
+#include <MySQL_Cursor.h>
+#include <WiFiClient.h>
+#include "DHT.h"
+
+#define DHTPIN 2     // what digital pin the DHT22 is conected to
+#define DHTTYPE DHT22   // there are multiple kinds of DHT sensors
+
+DHT dht(DHTPIN, DHTTYPE);
+//Connect to Wifi Network
+const char* ssid     = "//WIFI";
+const char* password = "//PASSWORD";
+WiFiClient client;
+// MySQL server details
+IPAddress server_addr(//SERVER IP); // IP of the MySQL server here
+char user[] = "Cot"; // MySQL user login username
+char pass[] = "//PASSWORD"; // MySQL user login password
+
+//Query to insert readings into MySQL, update value 1 to sensor id
+char INSERT_SQL_FORMAT[] = "INSERT INTO BabyMonitor.SensorReadings (Sensor_Id, Reading) VALUES (//SENSOR_ID, %f)";
+char query[128];
+MySQL_Connection conn((Client *)&client);
+
+// global variables
+const char host[] = "Cot"; // update for each sensor
+
+void setup() {
+  // start serial communication at 9600 bits per second:
+  Serial.begin(9600);
+  Serial.setTimeout(2000);
+
+  // Wait for serial to initialize.
+  while (!Serial) { }
+
+  dht.begin();
+
+  Serial.println("Device Started");
+  Serial.println("-------------------------------------");
+  Serial.println("Running DHT!");
+  Serial.println("-------------------------------------");
+
+  // connect to WiFi
+  WiFi.hostname(host);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+
+  }
+  delay(2000);
+
+  // open connection to MySQL DB
+  while (conn.connect(server_addr, 3306, user, pass) != true) {
+    delay(500);
+    Serial.print ( "." );
+  }
+}
+
+void loop() {
+  
+  float h = dht.readHumidity();
+  // Read temperature as Celsius (the default)
+  float t = dht.readTemperature();
+
+  // Compute heat index in Celsius (isFahreheit = false)
+  float hic = dht.computeHeatIndex(t, h, false);
+
+  // Create cursor to execute SQL query
+  MySQL_Cursor *cur_mem = new MySQL_Cursor(&conn);
+  // Parse query to insert into SQL Table
+  sprintf(query, INSERT_SQL_FORMAT, hic);
+  // Execute the query
+  cur_mem->execute(query);
+  // Delete the cursor
+  delete cur_mem;
+
+  // run again in 1 hour
+  delay(60 * 60 * 1000UL);
+
+}
