@@ -4,6 +4,14 @@ CREATE DATABASE BabyMonitor;
 #Switch to new DB
 USE BabyMonitor;
 
+#Create account used to load readings, replace USERNAME and Password
+CREATE USER 'USERNAME'@'%' IDENTIFIED BY 'PASSWORD';
+
+#Grant privileges to user setup in setp above
+GRANT ALL PRIVILEGES ON BabyMonitor.* TO 'USERNAME'@'%';
+
+FLUSH PRIVILEGES;
+
 CREATE TABLE Sensors ( 
     Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY 
   , Sensor VARCHAR(256) NOT NULL 
@@ -20,14 +28,6 @@ CREATE TABLE SensorReadings (
   , CONSTRAINT fk_sensor
       FOREIGN KEY (Sensor_Id) REFERENCES Sensors(Id) ON DELETE CASCADE
 );
-
-#Create account used to load readings, replace USERNAME and Password
-CREATE USER 'USERNAME'@'%' IDENTIFIED BY 'PASSWORD';
-
-#Grant privileges to user setup in setp above
-GRANT ALL PRIVILEGES ON BabyMonitor.* TO 'USERNAME'@'%';
-
-FLUSH PRIVILEGES;
 
 # Create dim table to hold events
 CREATE TABLE DimEvents (
