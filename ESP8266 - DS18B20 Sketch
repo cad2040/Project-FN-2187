@@ -1,0 +1,75 @@
+#include <ESP8266WiFi.h>
+#include <MySQL_Connection.h>
+#include <MySQL_Cursor.h>
+#include <WiFiClient.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+//Connect to Wifi Network
+const char* ssid     = "WIFI";
+const char* password = "PASSWORD";
+WiFiClient client;
+// MySQL server details
+IPAddress server_addr(Server IP); // IP of the MySQL server here
+char user[] = "USERNAME"; // MySQL user login username
+char pass[] = "PASSWORD"; // MySQL user login password
+
+//Query to insert readings into MySQL, update value 1 to sensor id
+char INSERT_SQL_FORMAT[] = "INSERT INTO TempSensors.Readings (Sensor_Id, Reading) VALUES (//ADD SENSOR ID, %f)";
+char query[128];
+MySQL_Connection conn((Client *)&client);
+
+// global variables
+const char host[] = "SensorName"; // update for each sensor
+
+// GPIO where the DS18B20 is connected to
+const int oneWireBus = 2;
+
+// Setup a oneWire instance to communicate with any OneWire devices
+OneWire oneWire(oneWireBus);
+
+// Pass our oneWire reference to Dallas Temperature sensor
+DallasTemperature sensors(&oneWire);
+
+void setup() {
+  // start serial communication at 115200 bits per second:
+  // Start the Serial Monitor
+  Serial.begin(115200);
+  // Start the DS18B20 sensor
+  sensors.begin();
+
+  // connect to WiFi
+  WiFi.hostname(host);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+
+  }
+  delay(2000);
+
+  // open connection to MySQL DB
+  while (conn.connect(server_addr, 3306, user, pass) != true) {
+    delay(500);
+    Serial.print ( "." );
+  }
+}
+
+void loop() {
+
+  sensors.requestTemperatures(); 
+  float temperatureC = sensors.getTempCByIndex(0);
+
+  // Create cursor to execute SQL query
+  MySQL_Cursor *cur_mem = new MySQL_Cursor(&conn);
+  // Parse query to insert into SQL Table
+  sprintf(query, INSERT_SQL_FORMAT, temperatureC);
+  // Execute the query
+  cur_mem->execute(query);
+  // Delete the cursor
+  delete cur_mem;
+
+  // run again in 1 hour
+  delay(60 * 60 * 1000UL);
+
+}
