@@ -6,7 +6,7 @@ USE BabyMonitor;
 
 CREATE TABLE Sensors ( 
     Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY 
-  , Sensor VARCHAR(30) NOT NULL 
+  , Sensor VARCHAR(256) NOT NULL 
   , Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   );
 
@@ -15,17 +15,17 @@ CREATE TABLE Sensors (
 CREATE TABLE SensorReadings (
     id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
   , Sensor_Id INT(6) UNSIGNED NOT NULL
-  , Reading INT(6) NOT NULL
+  , Reading FLOAT(8,5) NOT NULL
   , Inserted TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP 
   , CONSTRAINT fk_sensor
-    FOREIGN KEY (Sensor_Id) REFERENCES Sensors(Id) ON DELETE CASCADE
+      FOREIGN KEY (Sensor_Id) REFERENCES Sensors(Id) ON DELETE CASCADE
 );
 
 #Create account used to load readings, replace USERNAME and Password
 CREATE USER 'USERNAME'@'%' IDENTIFIED BY 'PASSWORD';
 
 #Grant privileges to user setup in setp above
-GRANT ALL PRIVILEGES ON SoilSensors.* TO 'USERNAME'@'%';
+GRANT ALL PRIVILEGES ON BabyMonitor.* TO 'USERNAME'@'%';
 
 FLUSH PRIVILEGES;
 
@@ -38,38 +38,21 @@ CREATE TABLE DimEvents (
 #Create table to store Event facts E.g. Time and amount of feed
 CREATE TABLE FactEvents (
     Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
-,Event_Id INT(6) UNSIGNED NOT NULL
-,EventDate DATE 
-,EventTime
-,EventDetails 
-,CONSTRAINT fk_plant
-FOREIGN KEY (plant_id) 
-   REFERENCES DimPlants(id) ON DELETE CASCADE
-);
+  , Event_Id INT(6) UNSIGNED NOT NULL
+  , EventDate DATE 
+  , EventTime
+  , VARCHAR(21844) CHARACTER SET utf8 NOT NULL
+  , CONSTRAINT fk_plant
+      FOREIGN KEY (Event_Id) REFERENCES DimEvents(Id) ON DELETE CASCADE
+  );
 
 #Create table to store plot URLs
 CREATE TABLE Plots (
- id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
-,sensor_id INT(6) UNSIGNED NOT NULL
-,sensor VARCHAR(255) NOT NULL
-,URL VARCHAR(255) NOT NULL
-,CONSTRAINT fk_sensor3
-FOREIGN KEY (sensor_id) 
-   REFERENCES Sensors(id) ON DELETE CASCADE
-);
+    Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
+  , Sensor_Id INT(6) UNSIGNED NOT NULL
+  , Sensor VARCHAR(256) NOT NULL
+  , URL VARCHAR(21844) CHARACTER SET utf8 NOT NULL
+  , CONSTRAINT fk_sensor3
+      FOREIGN KEY (Sensor_Id) REFERENCES Sensors(Id) ON DELETE CASCADE
+  );
 
-#Create table to store water pump pin assignments
-CREATE TABLE SoilSensors.Pins (
- id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
-,sensor_id INT(6) UNSIGNED NOT NULL
-,pin INT(6) UNSIGNED NOT NULL
-,CONSTRAINT fk_sensor4
-FOREIGN KEY (sensor_id) 
-   REFERENCES Sensors(id) ON DELETE CASCADE
-);
-
-#Create table to store possible gpio pins for assignment
-CREATE TABLE SoilSensors.DimPins (
- id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
-,pin INT(6) UNSIGNED NOT NULL
-);
