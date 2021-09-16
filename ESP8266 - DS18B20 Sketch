@@ -14,7 +14,7 @@ char user[] = "USERNAME"; // MySQL user login username
 char pass[] = "PASSWORD"; // MySQL user login password
 
 //Query to insert readings into MySQL, update value 1 to sensor id
-char INSERT_SQL_FORMAT[] = "INSERT INTO TempSensors.Readings (Sensor_Id, Reading) VALUES (//ADD SENSOR ID, %f)";
+char INSERT_SQL_FORMAT[] = "INSERT INTO BabyMonitor.SensorReadings (Sensor_Id, Reading) VALUES (//ADD SENSOR ID, %f)";
 char query[128];
 MySQL_Connection conn((Client *)&client);
 
