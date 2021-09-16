@@ -42,7 +42,7 @@ CREATE TABLE FactEvents (
   , EventDate DATE 
   , EventTime
   , VARCHAR(21844) CHARACTER SET utf8 NOT NULL
-  , CONSTRAINT fk_plant
+  , CONSTRAINT fk_event
       FOREIGN KEY (Event_Id) REFERENCES DimEvents(Id) ON DELETE CASCADE
   );
 
