@@ -32,7 +32,7 @@ CREATE TABLE SensorReadings (
 # Create dim table to hold events
 CREATE TABLE DimEvents (
     Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
-  , Event VARCHAR(21844) CHARACTER SET utf8 NOT NULL
+  , Event VARCHAR(20000) CHARACTER SET utf8 NOT NULL
   );
     
 #Create table to store Event facts E.g. Time and amount of feed
@@ -40,8 +40,8 @@ CREATE TABLE FactEvents (
     Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
   , Event_Id INT(6) UNSIGNED NOT NULL
   , EventDate DATE 
-  , EventTime
-  , VARCHAR(21844) CHARACTER SET utf8 NOT NULL
+  , EventTime TIME
+  , VARCHAR(20000) CHARACTER SET utf8 NOT NULL
   , CONSTRAINT fk_event
       FOREIGN KEY (Event_Id) REFERENCES DimEvents(Id) ON DELETE CASCADE
   );
@@ -51,8 +51,13 @@ CREATE TABLE Plots (
     Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
   , Sensor_Id INT(6) UNSIGNED NOT NULL
   , Sensor VARCHAR(256) NOT NULL
-  , URL VARCHAR(21844) CHARACTER SET utf8 NOT NULL
+  , URL VARCHAR(20000) CHARACTER SET utf8 NOT NULL
   , CONSTRAINT fk_sensor3
       FOREIGN KEY (Sensor_Id) REFERENCES Sensors(Id) ON DELETE CASCADE
   );
 
+INSERT INTO BabyMonitor.Sensors (Sensor) VALUES ('Cot');
+
+INSERT INTO BabyMonitor.Sensors (Sensor) VALUES ('Lounge');
+
+INSERT INTO BabyMonitor.Sensors (Sensor) VALUES ('Sunroom');
