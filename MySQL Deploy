@@ -56,6 +56,13 @@ CREATE TABLE Plots (
       FOREIGN KEY (Sensor_Id) REFERENCES Sensors(Id) ON DELETE CASCADE
   );
 
+#Create table to store plots for metrics (Feeds per day, weight etc)
+CREATE TABLE BabyMonitor.MetricPlots (
+    Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
+  , Metric VARCHAR(256) NOT NULL
+  , URL VARCHAR(20000) CHARACTER SET utf8 NOT NULL
+  );
+
 INSERT INTO BabyMonitor.Sensors (Sensor) VALUES ('Cot');
 
 INSERT INTO BabyMonitor.Sensors (Sensor) VALUES ('Lounge');
