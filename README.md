@@ -1,152 +1,227 @@
 # Baby Monitor Dashboard
 
-A comprehensive baby monitoring system using ESP8266 microcontrollers and temperature sensors to track environmental conditions.
+A comprehensive baby monitoring system using ESP8266 microcontrollers and temperature sensors. This project provides real-time temperature monitoring, data visualization, and remote management capabilities.
 
 ## Features
 
-- Temperature monitoring using DHT22 or DS18B20 sensors
-- Real-time data storage in MySQL database
-- Power-efficient operation with deep sleep mode
-- LED status indicators
-- Failed reading storage and recovery
-- Device authentication and security
-- Automatic data retention
-- System health monitoring
+- **Real-time Temperature Monitoring**
+  - Support for DHT22 and DS18B20 temperature sensors
+  - Multiple sensor locations (nursery, living room, bedroom)
+  - Temperature range monitoring and alerts
+  - Historical data tracking
+
+- **Web Dashboard**
+  - Real-time temperature visualization using Chart.js
+  - WebSocket-based live updates
+  - Responsive design with Bootstrap 5
+  - Dark/light theme support
+  - Interactive charts and graphs
+
+- **Power Management**
+  - Deep sleep mode for energy efficiency
+  - Configurable update intervals
+  - Battery level monitoring
+  - Power-saving LED indicators
+
+- **Security Features**
+  - Device authentication
+  - Secure WebSocket connections
+  - Rate limiting
+  - Input validation
+  - Helmet.js security headers
+
+- **Data Management**
+  - MySQL database storage
+  - Automatic data retention
+  - Data visualization
+  - Export capabilities
 
 ## Hardware Requirements
 
 ### Required Components
 - ESP8266 microcontroller (NodeMCU or similar)
 - DHT22 or DS18B20 temperature sensor
-- LED for status indication
-- USB cable for programming
+- LED indicators (3x)
+  - Green: Normal operation
+  - Yellow: Warning/Processing
+  - Red: Error/Alert
 - Power supply (USB or battery)
+- Jumper wires
+- Breadboard (optional)
 
 ### Optional Components
 - Battery pack for portable operation
-- Capacitor for power stability
 - Enclosure for protection
+- External antenna for better WiFi range
 
 ## Wiring Diagram
 
-### DHT22 Setup
+### DHT22 Sensor
 ```
 ESP8266    DHT22
-3.3V   ->  VCC
-GND    ->  GND
-GPIO5  ->  DATA
+3.3V   --> VCC
+GND    --> GND
+D4     --> DATA
 ```
 
-### DS18B20 Setup
+### DS18B20 Sensor
 ```
 ESP8266    DS18B20
-3.3V   ->  VCC
-GND    ->  GND
-GPIO2  ->  DATA
+3.3V   --> VCC
+GND    --> GND
+D4     --> DATA
 ```
 
-### LED Setup
+### LED Indicators
 ```
 ESP8266    LED
-GPIO2  ->  Anode (+)
-GND    ->  Cathode (-)
+3.3V   --> Green LED (through 220Ω resistor)
+D5     --> Yellow LED (through 220Ω resistor)
+D6     --> Red LED (through 220Ω resistor)
 ```
 
 ## Software Setup
 
 ### Prerequisites
+- Node.js (v14 or higher)
+- MySQL Server (v5.7 or higher)
 - Arduino IDE
-- ESP8266 board support
-- Required libraries:
+- Required Arduino libraries:
   - ESP8266WiFi
-  - MySQL_Connection
-  - MySQL_Cursor
-  - DHTStable (for DHT22)
-  - OneWire (for DS18B20)
-  - DallasTemperature (for DS18B20)
+  - DHT sensor library
+  - OneWire
+  - DallasTemperature
   - ESP8266HTTPClient
   - ArduinoJson
 
-### Library Installation
-1. Open Arduino IDE
-2. Go to Tools > Manage Libraries
-3. Search for and install each required library
+### Installation
 
-### Database Setup
-1. Run the MySQL Deploy script to create the database and tables
-2. Update the database credentials in the sketch
-3. Configure the sensor IDs in the database
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/baby-monitor.git
+cd baby-monitor
+```
 
-### Code Configuration
-1. Open the appropriate sketch (DHT22 or DS18B20)
-2. Update the following configuration:
-   - WiFi credentials
-   - MySQL server details
-   - Device key
-   - Sensor ID
-   - Temperature ranges
-   - Reading intervals
+2. Install Node.js dependencies:
+```bash
+npm install
+```
+
+3. Set up the database:
+```bash
+mysql -u root -p < MySQL\ Deploy
+```
+
+4. Configure environment variables:
+Create a `.env` file in the project root:
+```env
+PORT=3000
+DB_HOST=localhost
+DB_USER=your_username
+DB_PASSWORD=your_password
+DB_NAME=BabyMonitor
+NODE_ENV=development
+```
+
+5. Start the server:
+```bash
+npm start
+```
+
+### Arduino Setup
+
+1. Open the appropriate sketch in Arduino IDE:
+   - `ESP8266 - DHT22 Sketch` for DHT22 sensors
+   - `ESP8266 - DS18B20 Sketch` for DS18B20 sensors
+
+2. Install required libraries through Arduino IDE Library Manager
+
+3. Configure WiFi and server settings in the sketch:
+```cpp
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+const char* serverUrl = "http://your-server:3000";
+```
+
+4. Upload the sketch to your ESP8266
 
 ## LED Status Indicators
 
-- 3 blinks: Successful startup
-- 5 blinks: WiFi connection failure
-- 6 blinks: Device validation failure
-- 7 blinks: MySQL connection failure
-- 2 blinks: Reading failure
-- 1 blink: Successful reading
+- **Green LED**
+  - Solid: Normal operation
+  - Blinking: Data transmission
+  - Off: Deep sleep
+
+- **Yellow LED**
+  - Solid: Processing
+  - Blinking: Warning
+  - Off: Normal state
+
+- **Red LED**
+  - Solid: Error
+  - Blinking: Critical error
+  - Off: Normal state
 
 ## Power Management
 
-The device uses deep sleep mode to conserve power:
-- Automatically disconnects WiFi before sleep
-- Wakes up at configured intervals
-- Can be disabled in configuration
+The system uses deep sleep mode to conserve power:
+- Wake up every 5 minutes (configurable)
+- Read temperature data
+- Transmit data to server
+- Return to deep sleep
 
 ## Security Features
 
-- Device authentication
-- Secure mode option
-- Device validation against server
-- JSON-based communication
-- Password protection
+- Device authentication using unique keys
+- Secure WebSocket connections
+- Rate limiting on API endpoints
+- Input validation and sanitization
+- Security headers with Helmet.js
+- CORS protection
+- Error logging and monitoring
 
 ## Troubleshooting
 
 ### Common Issues
-1. WiFi Connection
-   - Check credentials
-   - Verify network availability
-   - Check signal strength
 
-2. Database Connection
-   - Verify server IP
-   - Check credentials
-   - Ensure MySQL is running
+1. **WiFi Connection Issues**
+   - Check WiFi credentials
+   - Verify signal strength
+   - Check router settings
 
-3. Sensor Reading
-   - Check wiring
-   - Verify sensor type
-   - Check temperature ranges
+2. **Sensor Reading Errors**
+   - Verify wiring
+   - Check sensor power supply
+   - Verify sensor type configuration
+
+3. **Database Connection Issues**
+   - Check database credentials
+   - Verify MySQL service is running
+   - Check network connectivity
+
+4. **WebSocket Connection Issues**
+   - Check server status
+   - Verify firewall settings
+   - Check browser console for errors
 
 ### Debug Mode
-Enable debug mode in configuration for detailed logging:
-- Connection attempts
-- Reading results
-- Error messages
-- System status
+
+Enable debug mode by setting `DEBUG_MODE` to `true` in the sketch:
+```cpp
+#define DEBUG_MODE true
+```
 
 ## Maintenance
 
 ### Data Retention
-- Readings are automatically deleted after 30 days
-- System events are retained for 90 days
-- Failed readings are stored locally
+- Sensor readings: 30 days
+- System events: 90 days
+- Automatic cleanup via MySQL events
 
 ### Device Status
-- Devices are marked inactive after 24 hours without communication
-- Sensor status is updated based on device status
-- System events are logged for monitoring
+- Automatic status updates
+- Inactive device detection after 24 hours
+- Status synchronization with sensors
 
 ## Contributing
 
@@ -159,3 +234,10 @@ Enable debug mode in configuration for detailed logging:
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- ESP8266 community for hardware support
+- Chart.js for data visualization
+- Bootstrap for UI components
+- All contributors and maintainers
