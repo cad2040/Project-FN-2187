@@ -1,70 +1,160 @@
 #Create Database
-CREATE DATABASE BabyMonitor;
+CREATE DATABASE IF NOT EXISTS BabyMonitor;
 
 #Switch to new DB
 USE BabyMonitor;
 
 #Create account used to load readings, replace USERNAME and Password
-CREATE USER 'USERNAME'@'%' IDENTIFIED BY 'PASSWORD';
+CREATE USER IF NOT EXISTS 'USERNAME'@'%' IDENTIFIED BY 'PASSWORD';
 
 #Grant privileges to user setup in setp above
 GRANT ALL PRIVILEGES ON BabyMonitor.* TO 'USERNAME'@'%';
 
 FLUSH PRIVILEGES;
 
-CREATE TABLE Sensors ( 
-    Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY 
-  , Sensor VARCHAR(256) NOT NULL 
-  , Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-  );
-
-
-#Create table to store readings
-CREATE TABLE SensorReadings (
-    id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
-  , Sensor_Id INT(6) UNSIGNED NOT NULL
-  , Reading FLOAT(8,5) NOT NULL
-  , Inserted TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP 
-  , CONSTRAINT fk_sensor
-      FOREIGN KEY (Sensor_Id) REFERENCES Sensors(Id) ON DELETE CASCADE
+# Create table for device management
+CREATE TABLE IF NOT EXISTS Devices (
+    Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    Device_Name VARCHAR(256) NOT NULL,
+    Device_Key VARCHAR(64) NOT NULL,
+    Sensor_Id INT(6) UNSIGNED NOT NULL,
+    Last_Seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    Status ENUM('ACTIVE', 'INACTIVE', 'ERROR') DEFAULT 'ACTIVE',
+    Version VARCHAR(20),
+    Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_device_key (Device_Key),
+    CONSTRAINT fk_device_sensor
+        FOREIGN KEY (Sensor_Id) REFERENCES Sensors(Id) ON DELETE CASCADE
 );
 
-# Create dim table to hold events
-CREATE TABLE DimEvents (
-    Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
-  , Event VARCHAR(20000) CHARACTER SET utf8 NOT NULL
-  );
+CREATE TABLE IF NOT EXISTS Sensors ( 
+    Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    Sensor VARCHAR(256) NOT NULL,
+    Location VARCHAR(256),
+    Description TEXT,
+    Min_Temperature FLOAT,
+    Max_Temperature FLOAT,
+    Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    Status ENUM('ACTIVE', 'INACTIVE', 'ERROR') DEFAULT 'ACTIVE',
+    UNIQUE KEY unique_sensor_name (Sensor)
+);
+
+#Create table to store readings with enhanced features
+CREATE TABLE IF NOT EXISTS SensorReadings (
+    id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    Sensor_Id INT(6) UNSIGNED NOT NULL,
+    Reading FLOAT(8,5) NOT NULL,
+    Inserted TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    Status ENUM('OK', 'FAILED', 'WARNING') DEFAULT 'OK',
+    Error_Code INT,
+    Battery_Level FLOAT,
+    Signal_Strength INT,
+    CONSTRAINT fk_sensor
+        FOREIGN KEY (Sensor_Id) REFERENCES Sensors(Id) ON DELETE CASCADE,
+    INDEX idx_sensor_time (Sensor_Id, Inserted),
+    INDEX idx_status (Status)
+);
+
+# Create table for system events
+CREATE TABLE IF NOT EXISTS SystemEvents (
+    Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    Event_Type ENUM('INFO', 'WARNING', 'ERROR', 'SECURITY') NOT NULL,
+    Event_Message TEXT NOT NULL,
+    Device_Id INT(6) UNSIGNED,
+    Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_device
+        FOREIGN KEY (Device_Id) REFERENCES Devices(Id) ON DELETE SET NULL,
+    INDEX idx_event_type (Event_Type),
+    INDEX idx_created (Created)
+);
+
+# Create table to hold events
+CREATE TABLE IF NOT EXISTS DimEvents (
+    Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    Event VARCHAR(20000) CHARACTER SET utf8 NOT NULL,
+    Category VARCHAR(50),
+    Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
     
-#Create table to store Event facts E.g. Time and amount of feed
-CREATE TABLE FactEvents (
-    Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
-  , Event_Id INT(6) UNSIGNED NOT NULL
-  , EventDate DATE 
-  , EventTime TIME
-  , VARCHAR(20000) CHARACTER SET utf8 NOT NULL
-  , CONSTRAINT fk_event
-      FOREIGN KEY (Event_Id) REFERENCES DimEvents(Id) ON DELETE CASCADE
-  );
+#Create table to store Event facts
+CREATE TABLE IF NOT EXISTS FactEvents (
+    Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    Event_Id INT(6) UNSIGNED NOT NULL,
+    EventDate DATE,
+    EventTime TIME,
+    Notes TEXT,
+    Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_event
+        FOREIGN KEY (Event_Id) REFERENCES DimEvents(Id) ON DELETE CASCADE,
+    INDEX idx_event_date (EventDate)
+);
 
 #Create table to store plot URLs
-CREATE TABLE Plots (
-    Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
-  , Sensor_Id INT(6) UNSIGNED NOT NULL
-  , Sensor VARCHAR(256) NOT NULL
-  , URL VARCHAR(20000) CHARACTER SET utf8 NOT NULL
-  , CONSTRAINT fk_sensor3
-      FOREIGN KEY (Sensor_Id) REFERENCES Sensors(Id) ON DELETE CASCADE
-  );
+CREATE TABLE IF NOT EXISTS Plots (
+    Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    Sensor_Id INT(6) UNSIGNED NOT NULL,
+    Sensor VARCHAR(256) NOT NULL,
+    URL VARCHAR(20000) CHARACTER SET utf8 NOT NULL,
+    Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    Last_Updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_sensor3
+        FOREIGN KEY (Sensor_Id) REFERENCES Sensors(Id) ON DELETE CASCADE
+);
 
-#Create table to store plots for metrics (Feeds per day, weight etc)
-CREATE TABLE BabyMonitor.MetricPlots (
-    Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY
-  , Metric VARCHAR(256) NOT NULL
-  , URL VARCHAR(20000) CHARACTER SET utf8 NOT NULL
-  );
+#Create table to store plots for metrics
+CREATE TABLE IF NOT EXISTS MetricPlots (
+    Id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    Metric VARCHAR(256) NOT NULL,
+    URL VARCHAR(20000) CHARACTER SET utf8 NOT NULL,
+    Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    Last_Updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_metric (Metric)
+);
 
-INSERT INTO BabyMonitor.Sensors (Sensor) VALUES ('Cot');
+# Create data retention event
+DELIMITER //
+CREATE EVENT IF NOT EXISTS cleanup_old_readings
+ON SCHEDULE EVERY 1 DAY
+DO
+BEGIN
+    -- Delete readings older than 30 days
+    DELETE FROM SensorReadings 
+    WHERE Inserted < DATE_SUB(NOW(), INTERVAL 30 DAY);
+    
+    -- Delete system events older than 90 days
+    DELETE FROM SystemEvents 
+    WHERE Created < DATE_SUB(NOW(), INTERVAL 90 DAY);
+END //
+DELIMITER ;
 
-INSERT INTO BabyMonitor.Sensors (Sensor) VALUES ('Lounge');
+# Create event for device status check
+DELIMITER //
+CREATE EVENT IF NOT EXISTS check_device_status
+ON SCHEDULE EVERY 1 HOUR
+DO
+BEGIN
+    -- Update device status to INACTIVE if not seen in last 24 hours
+    UPDATE Devices 
+    SET Status = 'INACTIVE' 
+    WHERE Last_Seen < DATE_SUB(NOW(), INTERVAL 24 HOUR) 
+    AND Status = 'ACTIVE';
+    
+    -- Update sensor status based on device status
+    UPDATE Sensors s
+    JOIN Devices d ON s.Id = d.Sensor_Id
+    SET s.Status = d.Status
+    WHERE s.Status != d.Status;
+END //
+DELIMITER ;
 
-INSERT INTO BabyMonitor.Sensors (Sensor) VALUES ('Sunroom');
+# Insert initial sensor data
+INSERT INTO BabyMonitor.Sensors (Sensor, Location, Description, Min_Temperature, Max_Temperature) 
+VALUES 
+('Cot', 'Baby Room', 'Temperature sensor in baby cot', 18.0, 24.0),
+('Lounge', 'Living Room', 'Temperature sensor in living room', 18.0, 24.0),
+('Sunroom', 'Sun Room', 'Temperature sensor in sun room', 18.0, 24.0)
+ON DUPLICATE KEY UPDATE
+Location = VALUES(Location),
+Description = VALUES(Description),
+Min_Temperature = VALUES(Min_Temperature),
+Max_Temperature = VALUES(Max_Temperature);

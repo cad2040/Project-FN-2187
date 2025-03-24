@@ -1,78 +1,375 @@
-
-
 #include <ESP8266WiFi.h>
 #include <MySQL_Connection.h>
 #include <MySQL_Cursor.h>
 #include <WiFiClient.h>
 #include "DHTStable.h"
+#include <EEPROM.h>
+#include <ESP8266HTTPClient.h>
+#include <ArduinoJson.h>
 
-//Connect to Wifi Network
-const char* ssid     = "//WIFI NETWORK";
-const char* password = "//WIFI PASSWORD";
+// Configuration structure
+struct Config {
+  char ssid[32];
+  char password[64];
+  char mysql_user[32];
+  char mysql_pass[64];
+  IPAddress mysql_server;
+  uint8_t sensor_id;
+  unsigned long reading_interval;
+  bool deep_sleep_enabled;  // New field for power management
+  float min_temperature;    // New field for temperature validation
+  float max_temperature;    // New field for temperature validation
+  uint8_t max_retries;      // New field for retry attempts
+  char device_key[32];      // New field for device authentication
+  bool secure_mode;         // New field for security mode
+  unsigned long connection_timeout;  // New field for connection timeout
+  bool debug_mode;                  // New field for debug logging
+  uint8_t led_pin;                 // New field for status LED
+  uint16_t max_failed_readings;  // New field for failed readings limit
+  bool store_failed_readings;    // New field for failed readings storage
+  uint8_t data_compression;      // New field for data compression level
+};
+
+Config config = {
+  "//WIFI NETWORK",
+  "//WIFI PASSWORD",
+  "USERNAME",
+  "PASSWORD",
+  IPAddress(0, 0, 0, 0),
+  2,
+  3600000,  // 1 hour in milliseconds
+  true,     // Enable deep sleep by default
+  15.0,     // Minimum valid temperature
+  30.0,     // Maximum valid temperature
+  3,        // Maximum number of retries
+  "YOUR_DEVICE_KEY",  // Device authentication key
+  true,     // Enable secure mode
+  20000,    // 20 second connection timeout
+  true,     // Enable debug mode
+  2,        // LED pin for status indication
+  10,       // Maximum number of failed readings to store
+  true,     // Enable storage of failed readings
+  0         // No compression (0-9)
+};
+
+// Structure for storing failed readings
+struct FailedReading {
+  float temperature;
+  unsigned long timestamp;
+  uint8_t error_code;
+};
+
+FailedReading failedReadings[10];  // Array to store failed readings
+uint8_t failedReadingsCount = 0;
+
 WiFiClient client;
-// MySQL server details
-IPAddress server_addr(0, 0, 0, 0); // IP of the MySQL server here
-char user[] = "USERNAME"; // MySQL user login username
-char pass[] = "PASSWORD"; // MySQL user login password
-
-//Query to insert readings into MySQL, update value 1 to sensor id
-char INSERT_SQL_FORMAT[] = "INSERT INTO BabyMonitor.SensorReadings (Sensor_Id, Reading) VALUES (2, %f)";
-char query[128];
 MySQL_Connection conn((Client *)&client);
-
 DHTStable DHT;
 
 // global variables
 const char host[] = "Lounge"; // update for each sensor
 const int dataPin = 5;
+const int MAX_RETRIES = 3;
+
+// Function declarations
+bool connectWiFi();
+bool connectMySQL();
+bool readSensor(float &temperature);
+void saveReading(float temperature);
+bool validateDevice();
+void blinkLED(int count);
+void storeFailedReading(float temperature, uint8_t error_code);
+void sendFailedReadings();
 
 void setup() {
-  // start serial communication at 9600 bits per second:
   Serial.begin(9600);
   Serial.setTimeout(2000);
 
-  // Wait for serial to initialize.
+  // Initialize LED
+  pinMode(config.led_pin, OUTPUT);
+  digitalWrite(config.led_pin, LOW);
+
+  // Wait for serial to initialize
   while (!Serial) { }
 
   Serial.println("Device Started");
   Serial.println("-------------------------------------");
 
-  // connect to WiFi
-  WiFi.hostname(host);
-  WiFi.begin(ssid, password);
+  // Enable watchdog timer
+  ESP.wdtEnable(30); // 30 second timeout
 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-
+  // Connect to WiFi with timeout
+  if (!connectWiFi()) {
+    Serial.println("Failed to connect to WiFi. Restarting...");
+    blinkLED(5); // Indicate WiFi failure
+    ESP.restart();
   }
-  delay(2000);
 
-  // open connection to MySQL DB
-  while (conn.connect(server_addr, 3306, user, pass) != true) {
-    delay(500);
-    Serial.print ( "." );
+  // Validate device if secure mode is enabled
+  if (config.secure_mode && !validateDevice()) {
+    Serial.println("Device validation failed. Restarting...");
+    blinkLED(6); // Indicate validation failure
+    ESP.restart();
+  }
+
+  // Connect to MySQL with timeout
+  if (!connectMySQL()) {
+    Serial.println("Failed to connect to MySQL. Restarting...");
+    blinkLED(7); // Indicate MySQL failure
+    ESP.restart();
+  }
+
+  // Indicate successful startup
+  blinkLED(3);
+}
+
+void blinkLED(int count) {
+  for(int i = 0; i < count; i++) {
+    digitalWrite(config.led_pin, HIGH);
+    delay(200);
+    digitalWrite(config.led_pin, LOW);
+    delay(200);
   }
 }
 
-void loop() {
-  // Read temperature
-  Serial.println("Getting reading ");
-  int ReadData = DHT.read22(dataPin);
-  float t = DHT.getTemperature();
-  Serial.println(t);
-  Serial.println("-------------------------------------");
+bool connectWiFi() {
+  WiFi.hostname(host);
+  WiFi.begin(config.ssid, config.password);
+  
+  unsigned long startAttemptTime = millis();
+  while (WiFi.status() != WL_CONNECTED) {
+    if (millis() - startAttemptTime > config.connection_timeout) {
+      if (config.debug_mode) {
+        Serial.println("WiFi connection timeout");
+      }
+      return false;
+    }
+    delay(500);
+    if (config.debug_mode) {
+      Serial.print(".");
+    }
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    if (config.debug_mode) {
+      Serial.println("\nWiFi connected");
+      Serial.println("IP address: ");
+      Serial.println(WiFi.localIP());
+    }
+    return true;
+  }
+  return false;
+}
 
-  // Create cursor to execute SQL query
+bool connectMySQL() {
+  unsigned long startAttemptTime = millis();
+  while (!conn.connect(config.mysql_server, 3306, config.mysql_user, config.mysql_pass)) {
+    if (millis() - startAttemptTime > config.connection_timeout) {
+      if (config.debug_mode) {
+        Serial.println("MySQL connection timeout");
+      }
+      return false;
+    }
+    delay(500);
+    if (config.debug_mode) {
+      Serial.print(".");
+    }
+  }
+  
+  if (conn.connected()) {
+    if (config.debug_mode) {
+      Serial.println("\nMySQL connected");
+    }
+    return true;
+  }
+  return false;
+}
+
+bool readSensor(float &temperature) {
+  int chk = DHT.read22(dataPin);
+  
+  switch (chk) {
+    case DHTLIB_OK:
+      temperature = DHT.getTemperature();
+      // Validate temperature reading
+      if (temperature < config.min_temperature || temperature > config.max_temperature) {
+        Serial.println("Temperature reading out of valid range");
+        return false;
+      }
+      return true;
+    case DHTLIB_ERROR_CHECKSUM:
+      Serial.println("Checksum error");
+      return false;
+    case DHTLIB_ERROR_TIMEOUT:
+      Serial.println("Time out error");
+      return false;
+    default:
+      Serial.println("Unknown error");
+      return false;
+  }
+}
+
+void saveReading(float temperature) {
+  char query[128];
+  char INSERT_SQL_FORMAT[] = "INSERT INTO BabyMonitor.SensorReadings (Sensor_Id, Reading, Timestamp, Status) VALUES (%d, %f, NOW(), 'OK')";
+  
   MySQL_Cursor *cur_mem = new MySQL_Cursor(&conn);
-  // Parse query to insert into SQL Table
-  sprintf(query, INSERT_SQL_FORMAT, t);
-  // Execute the query
-  cur_mem->execute(query);
-  // Delete the cursor
+  sprintf(query, INSERT_SQL_FORMAT, config.sensor_id, temperature);
+  
+  uint8_t retries = 0;
+  bool success = false;
+  
+  while (!success && retries < config.max_retries) {
+    if (cur_mem->execute(query)) {
+      success = true;
+      if (config.debug_mode) {
+        Serial.println("Reading saved successfully");
+      }
+      // Try to send any stored failed readings
+      sendFailedReadings();
+    } else {
+      retries++;
+      if (config.debug_mode) {
+        Serial.print("Failed to save reading. Attempt ");
+        Serial.print(retries);
+        Serial.println(" of 3");
+      }
+      delay(1000);
+    }
+  }
+  
+  if (!success) {
+    if (config.debug_mode) {
+      Serial.println("Failed to save reading after all retries");
+    }
+    // Store failed reading if enabled
+    if (config.store_failed_readings && failedReadingsCount < config.max_failed_readings) {
+      storeFailedReading(temperature, 1); // 1 = database error
+    }
+  }
+  
   delete cur_mem;
+}
 
-  // run again in 1 hour
-  delay(60 * 60 * 1000UL);
+void storeFailedReading(float temperature, uint8_t error_code) {
+  if (failedReadingsCount < config.max_failed_readings) {
+    failedReadings[failedReadingsCount].temperature = temperature;
+    failedReadings[failedReadingsCount].timestamp = millis();
+    failedReadings[failedReadingsCount].error_code = error_code;
+    failedReadingsCount++;
+    
+    if (config.debug_mode) {
+      Serial.print("Stored failed reading. Total: ");
+      Serial.println(failedReadingsCount);
+    }
+  }
+}
 
+void sendFailedReadings() {
+  if (failedReadingsCount == 0) return;
+  
+  MySQL_Cursor *cur_mem = new MySQL_Cursor(&conn);
+  char query[256];
+  
+  for (uint8_t i = 0; i < failedReadingsCount; i++) {
+    sprintf(query, "INSERT INTO BabyMonitor.SensorReadings (Sensor_Id, Reading, Timestamp, Status, Error_Code) VALUES (%d, %f, FROM_UNIXTIME(%lu/1000), 'FAILED', %d)",
+             config.sensor_id,
+             failedReadings[i].temperature,
+             failedReadings[i].timestamp,
+             failedReadings[i].error_code);
+             
+    if (cur_mem->execute(query)) {
+      if (config.debug_mode) {
+        Serial.println("Failed reading sent successfully");
+      }
+      // Remove the sent reading by shifting remaining readings
+      for (uint8_t j = i; j < failedReadingsCount - 1; j++) {
+        failedReadings[j] = failedReadings[j + 1];
+      }
+      failedReadingsCount--;
+      i--; // Recheck this position as it now has a new reading
+    }
+  }
+  
+  delete cur_mem;
+}
+
+bool validateDevice() {
+  if (!config.secure_mode) return true;
+  
+  HTTPClient http;
+  WiFiClient client;
+  
+  // Create JSON payload
+  StaticJsonDocument<200> doc;
+  doc["device_id"] = config.sensor_id;
+  doc["device_key"] = config.device_key;
+  
+  String payload;
+  serializeJson(doc, payload);
+  
+  // Send validation request to server
+  http.begin(client, "http://your-server/validate-device");
+  http.addHeader("Content-Type", "application/json");
+  
+  int httpCode = http.POST(payload);
+  
+  if (httpCode == HTTP_CODE_OK) {
+    return true;
+  }
+  
+  Serial.println("Device validation failed");
+  return false;
+}
+
+void loop() {
+  ESP.wdtFeed(); // Reset watchdog timer
+  
+  float temperature;
+  if (readSensor(temperature)) {
+    if (config.debug_mode) {
+      Serial.print("Temperature: ");
+      Serial.println(temperature);
+    }
+    saveReading(temperature);
+    digitalWrite(config.led_pin, HIGH); // Indicate successful reading
+    delay(100);
+    digitalWrite(config.led_pin, LOW);
+  } else {
+    blinkLED(2); // Indicate reading failure
+  }
+  
+  if (config.debug_mode) {
+    Serial.println("-------------------------------------");
+  }
+  
+  // Check WiFi connection
+  if (WiFi.status() != WL_CONNECTED) {
+    if (config.debug_mode) {
+      Serial.println("WiFi disconnected. Restarting...");
+    }
+    blinkLED(5);
+    ESP.restart();
+  }
+  
+  // Check MySQL connection
+  if (!conn.connected()) {
+    if (config.debug_mode) {
+      Serial.println("MySQL disconnected. Restarting...");
+    }
+    blinkLED(7);
+    ESP.restart();
+  }
+  
+  if (config.deep_sleep_enabled) {
+    if (config.debug_mode) {
+      Serial.println("Entering deep sleep mode...");
+    }
+    // Disconnect WiFi to save power
+    WiFi.disconnect();
+    // Enter deep sleep mode
+    ESP.deepSleep(config.reading_interval * 1000); // Convert to microseconds
+  } else {
+    delay(config.reading_interval);
+  }
 }
